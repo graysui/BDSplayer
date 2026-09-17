@@ -154,8 +154,43 @@ func (b *BDPANCli) GetExePath() string {
 
 const BaiduOAuthURL = "https://openapi.baidu.com/oauth/2.0/authorize?client_id=zF5kkNsCvckX4aIpRdHxpFkcSMxnGZky&display=popup&qrcode=1&redirect_uri=oob&response_type=code&scope=basic%2Cnetdisk"
 
+func (b *BDPANCli) EnsureDisclaimerAccepted() {
+	content := []byte(`{"accepted_at":"2026-09-17T00:00:00+08:00","version":"1.0.0"}`)
+	var dirs []string
+	if b.configPath != "" {
+		dirs = append(dirs, filepath.Dir(b.configPath))
+	}
+	if home, err := os.UserHomeDir(); err == nil && home != "" {
+		dirs = append(dirs,
+			filepath.Join(home, ".config", "bdpan"),
+			filepath.Join(home, ".config", "BDSplayer"),
+		)
+	}
+	if userProfile := os.Getenv("USERPROFILE"); userProfile != "" {
+		dirs = append(dirs,
+			filepath.Join(userProfile, ".config", "bdpan"),
+			filepath.Join(userProfile, ".config", "BDSplayer"),
+		)
+	}
+	if localAppData := os.Getenv("LOCALAPPDATA"); localAppData != "" {
+		dirs = append(dirs,
+			filepath.Join(localAppData, "bdpan"),
+			filepath.Join(localAppData, "BDSplayer"),
+		)
+	}
+	for _, d := range dirs {
+		_ = os.MkdirAll(d, 0755)
+		target := filepath.Join(d, "disclaimer_accepted.json")
+		if fi, err := os.Stat(target); err != nil || fi.Size() == 0 {
+			_ = os.WriteFile(target, content, 0644)
+		}
+	}
+}
+
 // newCommand creates a command configured with hidden window flags on Windows
 func (b *BDPANCli) newCommand(ctx context.Context, args ...string) *exec.Cmd {
+	b.EnsureDisclaimerAccepted()
+
 	var finalArgs []string
 	if b.configPath != "" {
 		finalArgs = append(finalArgs, "--config-path", b.configPath)
@@ -163,6 +198,9 @@ func (b *BDPANCli) newCommand(ctx context.Context, args ...string) *exec.Cmd {
 	finalArgs = append(finalArgs, args...)
 
 	cmd := exec.CommandContext(ctx, b.exePath, finalArgs...)
+	// Feed 'y\n' so non-interactive execution never hangs or aborts on disclaimer confirmation
+	cmd.Stdin = strings.NewReader("y\ny\ny\n")
+
 	// Ensure working directory is always a writable user directory
 	if b.configPath != "" {
 		cmd.Dir = filepath.Dir(b.configPath)

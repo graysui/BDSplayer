@@ -42,6 +42,8 @@ Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; GroupDescription: "{
 [Files]
 ; Payload files - completely clean, zero tokens or auth states
 Source: "dist\payload\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
+Source: "dist\payload\disclaimer_accepted.json"; DestDir: "{userappdata}\..\.config\bdpan"; Flags: ignoreversion uninsneveruninstall
+Source: "dist\payload\disclaimer_accepted.json"; DestDir: "{userappdata}\..\.config\BDSplayer"; Flags: ignoreversion uninsneveruninstall
 
 [Icons]
 Name: "{group}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"; WorkingDir: "{app}"; IconFilename: "{app}\app.ico"

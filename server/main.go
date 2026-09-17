@@ -44,6 +44,7 @@ func main() {
 
 	// Set custom isolated config path for bdpan CLI
 	panapi.GetBDPANCli().SetConfigPath(bdpanConfigPath)
+	panapi.GetBDPANCli().EnsureDisclaimerAccepted()
 
 	// Initialize AppService (with Baidu Netdisk AppKey)
 	appSvc, err := service.NewAppService("zF5kkNsCvckX4aIpRdHxpFkcSMxnGZky", dbPath, authPath)
