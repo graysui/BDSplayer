@@ -1,3 +1,4 @@
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:media_kit/media_kit.dart';
 import 'package:window_manager/window_manager.dart';
@@ -60,12 +61,14 @@ class _BDSplayerAppState extends State<BDSplayerApp> with WindowListener {
 
   @override
   void onWindowClose() async {
-    final isPreventClose = await windowManager.isPreventClose();
-    if (isPreventClose) {
-      // Gracefully tell backend to exit
+    // 1. Immediately hide window from screen - provides 0ms instant close feel
+    await windowManager.hide();
+    // 2. Notify local backend service to shutdown
+    try {
       await BackendService.shutdown();
-      await windowManager.destroy();
-    }
+    } catch (_) {}
+    // 3. Immediately exit application process cleanly
+    exit(0);
   }
 
   @override

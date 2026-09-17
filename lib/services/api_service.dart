@@ -47,6 +47,14 @@ class ApiService {
     }
   }
 
+  Future<void> cancelLogin() async {
+    try {
+      await http.post(Uri.parse('$baseUrl/api/auth/cancel_login')).timeout(
+        const Duration(milliseconds: 500),
+      );
+    } catch (_) {}
+  }
+
   // 2. Shares
   Future<List<ShareRecord>> listShares() async {
     final res = await http.get(Uri.parse('$baseUrl/api/shares'));

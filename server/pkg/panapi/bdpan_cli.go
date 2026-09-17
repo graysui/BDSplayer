@@ -105,14 +105,30 @@ func findBDPANExe() string {
 		candidates = append(candidates,
 			filepath.Join(dir, "bdpan.exe"),
 			filepath.Join(dir, "..", "bdpan.exe"),
+			filepath.Join(dir, "payload", "bdpan.exe"),
+			filepath.Join(dir, "..", "payload", "bdpan.exe"),
 		)
 	}
 	if localAppData := os.Getenv("LOCALAPPDATA"); localAppData != "" {
-		candidates = append(candidates, filepath.Join(localAppData, "bdpan", "bdpan.exe"))
+		candidates = append(candidates,
+			filepath.Join(localAppData, "Programs", "BDSplayer", "bdpan.exe"),
+			filepath.Join(localAppData, "bdpan", "bdpan.exe"),
+		)
+	}
+	if progFiles := os.Getenv("ProgramFiles"); progFiles != "" {
+		candidates = append(candidates,
+			filepath.Join(progFiles, "BDSplayer", "bdpan.exe"),
+		)
+	}
+	if progFilesX86 := os.Getenv("ProgramFiles(x86)"); progFilesX86 != "" {
+		candidates = append(candidates,
+			filepath.Join(progFilesX86, "BDSplayer", "bdpan.exe"),
+		)
 	}
 	if home, err := os.UserHomeDir(); err == nil {
 		candidates = append(candidates,
 			filepath.Join(home, "Desktop", "baidu-drive", "bdpan.exe"),
+			filepath.Join(home, "Desktop", "baidu-drive", "dist", "payload", "bdpan.exe"),
 			filepath.Join(home, ".local", "bin", "bdpan.exe"),
 		)
 	}
@@ -145,6 +161,9 @@ func (b *BDPANCli) newCommand(ctx context.Context, args ...string) *exec.Cmd {
 	finalArgs = append(finalArgs, args...)
 
 	cmd := exec.CommandContext(ctx, b.exePath, finalArgs...)
+	if filepath.IsAbs(b.exePath) {
+		cmd.Dir = filepath.Dir(b.exePath)
+	}
 	cmd.SysProcAttr = &syscall.SysProcAttr{
 		HideWindow:    true,
 		CreationFlags: 0x08000000, // CREATE_NO_WINDOW
@@ -178,7 +197,7 @@ func (b *BDPANCli) Whoami() (bool, error) {
 func (b *BDPANCli) StartDeviceLogin() (qrURL string, userCode string, err error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 6*time.Minute)
 	cmd := b.newCommand(ctx, "--no-check-update", "login", "--accept-disclaimer", "--device-code")
-	return b.startDeviceLogin(ctx, cancel, cmd, 30*time.Second)
+	return b.startDeviceLogin(ctx, cancel, cmd, 45*time.Second)
 }
 
 func (b *BDPANCli) startDeviceLogin(ctx context.Context, cancel context.CancelFunc, cmd *exec.Cmd, timeout time.Duration) (string, string, error) {
@@ -186,9 +205,14 @@ func (b *BDPANCli) startDeviceLogin(ctx context.Context, cancel context.CancelFu
 	if b.loginCancel != nil {
 		b.loginCancel()
 	}
+	if b.loginCmd != nil && b.loginCmd.Process != nil {
+		_ = b.loginCmd.Process.Kill()
+	}
 	b.loginCmd = nil
 	b.isLoggingIn = false
 	b.lastQR, b.lastUserCode = "", ""
+	// Ensure no lingering bdpan process is locking resources
+	_ = exec.Command("taskkill", "/F", "/IM", "bdpan.exe").Run()
 
 	stdout, stdoutWriter, err := os.Pipe()
 	if err != nil {
@@ -230,6 +254,16 @@ func (b *BDPANCli) startDeviceLogin(ctx context.Context, cancel context.CancelFu
 			}
 			if m := userCodeRegex.FindStringSubmatch(line); len(m) > 1 {
 				c = m[1]
+			}
+			// Fallback: extract userCode directly from the qrcode URL path if needed
+			if c == "" && q != "" {
+				parts := strings.Split(q, "/")
+				if len(parts) > 0 {
+					last := parts[len(parts)-1]
+					if len(last) >= 4 && len(last) <= 16 {
+						c = last
+					}
+				}
 			}
 			trimmed := strings.TrimSpace(line)
 			if strings.HasPrefix(strings.ToLower(trimmed), "error:") || strings.HasPrefix(trimmed, "错误:") || strings.HasPrefix(trimmed, "错误：") {
@@ -313,6 +347,7 @@ func (b *BDPANCli) CancelLogin() {
 		_ = b.loginCmd.Process.Kill()
 		b.loginCmd = nil
 	}
+	_ = exec.Command("taskkill", "/F", "/IM", "bdpan.exe").Run()
 	b.isLoggingIn = false
 }
 

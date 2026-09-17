@@ -69,9 +69,15 @@ func main() {
 	mux.HandleFunc("/api/exit", func(w http.ResponseWriter, r *http.Request) {
 		jsonResponse(w, http.StatusOK, map[string]any{"ok": true})
 		go func() {
-			time.Sleep(150 * time.Millisecond)
+			panapi.GetBDPANCli().CancelLogin()
+			time.Sleep(50 * time.Millisecond)
 			os.Exit(0)
 		}()
+	})
+
+	mux.HandleFunc("/api/auth/cancel_login", func(w http.ResponseWriter, r *http.Request) {
+		panapi.GetBDPANCli().CancelLogin()
+		jsonResponse(w, http.StatusOK, map[string]any{"success": true})
 	})
 
 	mux.HandleFunc("/api/auth/device_code", func(w http.ResponseWriter, r *http.Request) {
@@ -337,11 +343,18 @@ func main() {
 	serverAddr := fmt.Sprintf("127.0.0.1:%d", *port)
 	ln, err := net.Listen("tcp", serverAddr)
 	if err != nil {
-		// Fallback to random available port if specified port is in use
-		ln, err = net.Listen("tcp", "127.0.0.1:0")
+		// Port in use: attempt to evict old instance by sending exit request
+		client := &http.Client{Timeout: 500 * time.Millisecond}
+		_, _ = client.Post(fmt.Sprintf("http://127.0.0.1:%d/api/exit", *port), "application/json", nil)
+		time.Sleep(350 * time.Millisecond)
+		ln, err = net.Listen("tcp", serverAddr)
 		if err != nil {
-			fmt.Printf("启动 HTTP 监听失败: %v\n", err)
-			os.Exit(1)
+			// Fallback to random available port if specified port remains in use
+			ln, err = net.Listen("tcp", "127.0.0.1:0")
+			if err != nil {
+				fmt.Printf("启动 HTTP 监听失败: %v\n", err)
+				os.Exit(1)
+			}
 		}
 	}
 	actualAddr := ln.Addr().String()

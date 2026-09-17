@@ -74,13 +74,12 @@ class _LoginDialogState extends State<LoginDialog> {
   @override
   void dispose() {
     _pollTimer?.cancel();
+    _api.cancelLogin();
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
-    
-
     return Dialog(
       backgroundColor: const Color(0xFF141822),
       shape: RoundedRectangleBorder(
@@ -102,7 +101,7 @@ class _LoginDialogState extends State<LoginDialog> {
                     color: Colors.blueAccent.withValues(alpha: 0.15),
                     borderRadius: BorderRadius.circular(12),
                   ),
-                  child: const Icon(Icons.qr_code_scanner, color: Colors.blueAccent, size: 24),
+                  child: const Icon(Icons.qr_code_scanner_rounded, color: Colors.blueAccent, size: 24),
                 ),
                 const SizedBox(width: 14),
                 const Expanded(
@@ -110,25 +109,27 @@ class _LoginDialogState extends State<LoginDialog> {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(
-                        '百度网盘账号授权',
+                        '扫码授权百度网盘',
                         style: TextStyle(color: Colors.white, fontSize: 17, fontWeight: FontWeight.bold),
                       ),
+                      SizedBox(height: 2),
                       Text(
-                        '免下载点播网盘高清原画视频',
-                        style: TextStyle(color: Colors.white54, fontSize: 12),
+                        '用于获取分享资源与解析高速直链',
+                        style: TextStyle(color: Colors.white38, fontSize: 12),
                       ),
                     ],
                   ),
                 ),
                 IconButton(
-                  icon: const Icon(Icons.close, color: Colors.white54, size: 20),
+                  icon: const Icon(Icons.close, color: Colors.white38, size: 20),
                   onPressed: () => Navigator.pop(context),
+                  tooltip: '关闭',
                 ),
               ],
             ),
             const SizedBox(height: 24),
 
-            // QR Frame
+            // QR Code Container
             Container(
               width: 220,
               height: 220,
@@ -148,26 +149,53 @@ class _LoginDialogState extends State<LoginDialog> {
                   ? const Center(child: CircularProgressIndicator(color: Colors.blueAccent))
                   : _error.isNotEmpty
                       ? Center(
-                          child: Column(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              const Icon(Icons.error_outline, color: Colors.redAccent, size: 36),
-                              const SizedBox(height: 8),
-                              const Text('获取二维码失败', style: TextStyle(color: Colors.black87, fontSize: 13, fontWeight: FontWeight.bold)),
-                              TextButton(
-                                onPressed: _startLogin,
-                                child: const Text('重试'),
-                              ),
-                            ],
+                          child: Padding(
+                            padding: const EdgeInsets.all(8.0),
+                            child: Column(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                const Icon(Icons.error_outline, color: Colors.redAccent, size: 36),
+                                const SizedBox(height: 8),
+                                const Text('获取二维码失败', style: TextStyle(color: Colors.black87, fontSize: 13, fontWeight: FontWeight.bold)),
+                                const SizedBox(height: 4),
+                                Text(
+                                  _error.length > 80 ? '${_error.substring(0, 80)}...' : _error,
+                                  textAlign: TextAlign.center,
+                                  style: const TextStyle(color: Colors.black54, fontSize: 10),
+                                ),
+                                const SizedBox(height: 8),
+                                ElevatedButton.icon(
+                                  onPressed: _startLogin,
+                                  icon: const Icon(Icons.refresh, size: 14),
+                                  label: const Text('重试', style: TextStyle(fontSize: 12)),
+                                  style: ElevatedButton.styleFrom(
+                                    backgroundColor: Colors.blueAccent,
+                                    foregroundColor: Colors.white,
+                                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
+                                  ),
+                                ),
+                              ],
+                            ),
                           ),
                         )
                       : ClipRRect(
                           borderRadius: BorderRadius.circular(8),
                           child: Image.network(
-                            '${_api.baseUrl}/api/auth/qrcode?url=${Uri.encodeComponent(_info?.qrcodeUrl ?? '')}',
+                            _info?.qrcodeUrl ?? '',
                             fit: BoxFit.contain,
-                            errorBuilder: (_, __, ___) => const Center(
-                              child: Text('二维码加载失败', style: TextStyle(color: Colors.black54, fontSize: 12)),
+                            errorBuilder: (_, __, ___) => Image.network(
+                              '${_api.baseUrl}/api/auth/qrcode?url=${Uri.encodeComponent(_info?.qrcodeUrl ?? '')}',
+                              fit: BoxFit.contain,
+                              errorBuilder: (_, __, ___) => const Center(
+                                child: Padding(
+                                  padding: EdgeInsets.all(8.0),
+                                  child: Text(
+                                    '二维码加载失败\n可使用下方设备码授权',
+                                    textAlign: TextAlign.center,
+                                    style: TextStyle(color: Colors.black54, fontSize: 11),
+                                  ),
+                                ),
+                              ),
                             ),
                           ),
                         ),

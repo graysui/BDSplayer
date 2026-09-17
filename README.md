@@ -12,7 +12,7 @@
 
 <br />
 
-[📥 立即下载 Windows 正式版安装包 (v1.0.1)](https://github.com/graysui/BDSplayer/releases/download/v1.0.1/BDSplayer-v1.0.1-x64-Setup.exe) &nbsp;•&nbsp; [✨ 核心功能](#-核心亮点) &nbsp;•&nbsp; [📖 使用教程](#-详细使用指南) &nbsp;•&nbsp; [❓ 常见问题](#-常见问题与使用技巧)
+[📥 立即下载 Windows 正式版安装包 (v1.0.2)](https://github.com/graysui/BDSplayer/releases/download/v1.0.2/BDSplayer-v1.0.2-x64-Setup.exe) &nbsp;•&nbsp; [✨ 核心功能](#-核心亮点) &nbsp;•&nbsp; [📖 使用教程](#-详细使用指南) &nbsp;•&nbsp; [❓ 常见问题](#-常见问题与使用技巧)
 
 </div>
 
@@ -45,7 +45,7 @@
 
 ### 下载安装
 1. 前往 [Releases 页面](https://github.com/graysui/BDSplayer/releases/latest) 下载最新正式版安装包：  
-   👉 **[`BDSplayer-v1.0.1-x64-Setup.exe`](https://github.com/graysui/BDSplayer/releases/download/v1.0.1/BDSplayer-v1.0.1-x64-Setup.exe)**
+   👉 **[`BDSplayer-v1.0.2-x64-Setup.exe`](https://github.com/graysui/BDSplayer/releases/download/v1.0.2/BDSplayer-v1.0.2-x64-Setup.exe)**
 2. 双击运行安装向导，按照默认指引完成安装（默认生成桌面快捷方式与开始菜单入口）。
 3. 安装完成后启动桌面上的 **BDSplayer** 即可开启极速播放体验。
 

@@ -37,6 +37,7 @@ class BackendService {
       await Process.start(
         exeFile.path,
         ['--server-only', '--port=18900'],
+        workingDirectory: exeFile.parent.path,
         mode: ProcessStartMode.detached,
       );
 
@@ -55,11 +56,11 @@ class BackendService {
     }
   }
 
-  /// Gracefully request the backend server to exit.
+  /// Gracefully request the backend server to exit with fast timeout.
   static Future<void> shutdown() async {
     try {
       await http.post(Uri.parse(exitUrl)).timeout(
-        const Duration(milliseconds: 500),
+        const Duration(milliseconds: 150),
       );
     } catch (_) {}
   }
@@ -70,14 +71,26 @@ class BackendService {
       '$exeDir\\bds-server.exe',
       '$exeDir\\share-service.exe',
       '$exeDir\\share-player.exe',
-      // Development fallbacks
+      // Installed app fallback
+      if (Platform.environment['LOCALAPPDATA'] != null)
+        '${Platform.environment['LOCALAPPDATA']}\\Programs\\BDSplayer\\bds-server.exe',
+      if (Platform.environment['ProgramFiles'] != null)
+        '${Platform.environment['ProgramFiles']}\\BDSplayer\\bds-server.exe',
+      // Development and relative fallbacks
+      '$exeDir\\..\\dist\\payload\\bds-server.exe',
+      '$exeDir\\..\\..\\dist\\payload\\bds-server.exe',
+      '$exeDir\\..\\..\\..\\dist\\payload\\bds-server.exe',
+      '$exeDir\\..\\..\\..\\..\\dist\\payload\\bds-server.exe',
       '..\\dist\\payload\\bds-server.exe',
+      'dist\\payload\\bds-server.exe',
       '..\\share-player\\bds-server.exe',
       '..\\share-player\\share-player.exe',
       'share-player\\share-player.exe',
+      'c:\\Users\\gray9\\Desktop\\baidu-drive\\dist\\payload\\bds-server.exe',
     ];
 
     for (final p in candidates) {
+      if (p.isEmpty) continue;
       final f = File(p);
       if (f.existsSync()) {
         return f;
