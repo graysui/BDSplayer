@@ -47,6 +47,37 @@ class ApiService {
     }
   }
 
+  Future<void> submitAuthCode(String code) async {
+    final res = await http.post(
+      Uri.parse('$baseUrl/api/auth/submit_code'),
+      headers: {'Content-Type': 'application/json'},
+      body: jsonEncode({'code': code.trim()}),
+    );
+    final body = utf8.decode(res.bodyBytes);
+    if (res.statusCode != 200) {
+      try {
+        final errObj = jsonDecode(body);
+        throw Exception(errObj['error'] ?? body);
+      } catch (e) {
+        if (e is Exception) rethrow;
+        throw Exception(body);
+      }
+    }
+  }
+
+  Future<String> getAuthUrl() async {
+    try {
+      final res = await http.get(Uri.parse('$baseUrl/api/auth/auth_url'));
+      if (res.statusCode == 200) {
+        final data = jsonDecode(utf8.decode(res.bodyBytes));
+        if (data['url'] != null && data['url'].toString().isNotEmpty) {
+          return data['url'].toString();
+        }
+      }
+    } catch (_) {}
+    return 'https://openapi.baidu.com/oauth/2.0/authorize?client_id=zF5kkNsCvckX4aIpRdHxpFkcSMxnGZky&display=popup&qrcode=1&redirect_uri=oob&response_type=code&scope=basic%2Cnetdisk';
+  }
+
   Future<void> cancelLogin() async {
     try {
       await http.post(Uri.parse('$baseUrl/api/auth/cancel_login')).timeout(

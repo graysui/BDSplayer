@@ -152,6 +152,8 @@ func (b *BDPANCli) GetExePath() string {
 	return b.exePath
 }
 
+const BaiduOAuthURL = "https://openapi.baidu.com/oauth/2.0/authorize?client_id=zF5kkNsCvckX4aIpRdHxpFkcSMxnGZky&display=popup&qrcode=1&redirect_uri=oob&response_type=code&scope=basic%2Cnetdisk"
+
 // newCommand creates a command configured with hidden window flags on Windows
 func (b *BDPANCli) newCommand(ctx context.Context, args ...string) *exec.Cmd {
 	var finalArgs []string
@@ -161,9 +163,16 @@ func (b *BDPANCli) newCommand(ctx context.Context, args ...string) *exec.Cmd {
 	finalArgs = append(finalArgs, args...)
 
 	cmd := exec.CommandContext(ctx, b.exePath, finalArgs...)
-	if filepath.IsAbs(b.exePath) {
-		cmd.Dir = filepath.Dir(b.exePath)
+	// Ensure working directory is always a writable user directory
+	if b.configPath != "" {
+		cmd.Dir = filepath.Dir(b.configPath)
+	} else if home, err := os.UserHomeDir(); err == nil {
+		cmd.Dir = filepath.Join(home, ".config", "BDSplayer")
+	} else {
+		cmd.Dir = os.TempDir()
 	}
+	_ = os.MkdirAll(cmd.Dir, 0755)
+
 	cmd.SysProcAttr = &syscall.SysProcAttr{
 		HideWindow:    true,
 		CreationFlags: 0x08000000, // CREATE_NO_WINDOW
@@ -211,8 +220,6 @@ func (b *BDPANCli) startDeviceLogin(ctx context.Context, cancel context.CancelFu
 	b.loginCmd = nil
 	b.isLoggingIn = false
 	b.lastQR, b.lastUserCode = "", ""
-	// Ensure no lingering bdpan process is locking resources
-	_ = exec.Command("taskkill", "/F", "/IM", "bdpan.exe").Run()
 
 	stdout, stdoutWriter, err := os.Pipe()
 	if err != nil {
@@ -246,9 +253,14 @@ func (b *BDPANCli) startDeviceLogin(ctx context.Context, cancel context.CancelFu
 		scanner := bufio.NewScanner(stdout)
 		scanner.Buffer(make([]byte, 4096), 1024*1024)
 		var q, c, diagnostic string
+		var allLines []string
 		promptSent := false
 		for scanner.Scan() {
 			line := ansiEscapeRegex.ReplaceAllString(scanner.Text(), "")
+			trimmed := strings.TrimSpace(line)
+			if trimmed != "" {
+				allLines = append(allLines, trimmed)
+			}
 			if m := qrRegex.FindString(line); m != "" {
 				q = m
 			}
@@ -265,8 +277,7 @@ func (b *BDPANCli) startDeviceLogin(ctx context.Context, cancel context.CancelFu
 					}
 				}
 			}
-			trimmed := strings.TrimSpace(line)
-			if strings.HasPrefix(strings.ToLower(trimmed), "error:") || strings.HasPrefix(trimmed, "错误:") || strings.HasPrefix(trimmed, "错误：") {
+			if strings.HasPrefix(strings.ToLower(trimmed), "error:") || strings.HasPrefix(trimmed, "错误:") || strings.HasPrefix(trimmed, "错误：") || strings.Contains(trimmed, "登录失败") || strings.Contains(trimmed, "请求设备码失败") {
 				// Do not return URLs containing temporary authorization data.
 				diagnostic = diagnosticURLRegex.ReplaceAllString(trimmed, "[请求地址]")
 				runes := []rune(diagnostic)
@@ -291,7 +302,15 @@ func (b *BDPANCli) startDeviceLogin(ctx context.Context, cancel context.CancelFu
 		case scanErr != nil:
 			result = fmt.Errorf("读取网盘授权信息失败：%w", scanErr)
 		case waitErr != nil:
-			result = fmt.Errorf("网盘授权程序退出：%w", waitErr)
+			if len(allLines) > 0 {
+				detail := strings.Join(allLines, "；")
+				if len([]rune(detail)) > 300 {
+					detail = string([]rune(detail)[:300]) + "..."
+				}
+				result = fmt.Errorf("网盘授权程序退出 (%v)：%s", waitErr, detail)
+			} else {
+				result = fmt.Errorf("网盘授权程序退出 (%v)，无输出。请检查网络或是否被防火墙/杀毒软件拦截", waitErr)
+			}
 		case !promptSent:
 			result = fmt.Errorf("网盘授权程序未返回二维码，请重试")
 		}
@@ -347,8 +366,28 @@ func (b *BDPANCli) CancelLogin() {
 		_ = b.loginCmd.Process.Kill()
 		b.loginCmd = nil
 	}
-	_ = exec.Command("taskkill", "/F", "/IM", "bdpan.exe").Run()
 	b.isLoggingIn = false
+}
+
+// SetAuthCode completes login using an authorization code from browser OAuth
+func (b *BDPANCli) SetAuthCode(code string) error {
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+
+	cmd := b.newCommand(ctx, "--no-check-update", "login", "--accept-disclaimer", "--set-code", strings.TrimSpace(code))
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		outStr := strings.TrimSpace(ansiEscapeRegex.ReplaceAllString(string(out), ""))
+		if outStr != "" {
+			return fmt.Errorf("%s", outStr)
+		}
+		return fmt.Errorf("授权码验证失败：%w", err)
+	}
+	return nil
+}
+
+func (b *BDPANCli) GetAuthURL() string {
+	return BaiduOAuthURL
 }
 
 // DecryptTokens reads and decrypts tokens from bdpan config

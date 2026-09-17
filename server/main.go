@@ -121,6 +121,31 @@ func main() {
 		jsonResponse(w, http.StatusOK, map[string]any{"success": success})
 	})
 
+	mux.HandleFunc("/api/auth/submit_code", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+		var req struct {
+			Code string `json:"code"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil || strings.TrimSpace(req.Code) == "" {
+			jsonResponse(w, http.StatusBadRequest, map[string]string{"error": "请提供有效的授权码"})
+			return
+		}
+		if err := appSvc.SubmitAuthCode(req.Code); err != nil {
+			jsonResponse(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+			return
+		}
+		jsonResponse(w, http.StatusOK, map[string]any{"success": true})
+	})
+
+	mux.HandleFunc("/api/auth/auth_url", func(w http.ResponseWriter, r *http.Request) {
+		jsonResponse(w, http.StatusOK, map[string]string{
+			"url": panapi.BaiduOAuthURL,
+		})
+	})
+
 	mux.HandleFunc("/api/shares", func(w http.ResponseWriter, r *http.Request) {
 		if r.Method == http.MethodGet {
 			list, err := appSvc.ListShares()

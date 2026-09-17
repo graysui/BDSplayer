@@ -3,7 +3,7 @@
 #define MyAppEnglishName "BDSplayer"
 #define MyAppTitle "BDSplayer - 百度网盘视频播放器"
 #ifndef MyAppVersion
-  #define MyAppVersion "1.0.2"
+  #define MyAppVersion "1.0.3"
 #endif
 #define MyAppExeName "BDSplayer.exe"
 

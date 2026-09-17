@@ -105,6 +105,20 @@ func (s *AppService) PollDeviceLogin(deviceCode string) (bool, error) {
 	return false, nil
 }
 
+func (s *AppService) SubmitAuthCode(code string) error {
+	if err := panapi.GetBDPANCli().SetAuthCode(code); err != nil {
+		return err
+	}
+	isAuth, err := panapi.GetBDPANCli().Whoami()
+	if err != nil || !isAuth {
+		return fmt.Errorf("授权码已提交，但验证登录状态未通过，请检查后重试")
+	}
+	if at, rt, err := panapi.GetBDPANCli().DecryptTokens(); err == nil && at != "" {
+		_ = s.tokenMgr.SetToken(&auth.TokenInfo{AccessToken: at, RefreshToken: rt, ExpiresIn: 86400 * 30})
+	}
+	return nil
+}
+
 func (s *AppService) Logout() error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
