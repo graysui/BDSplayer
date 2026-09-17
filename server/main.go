@@ -25,7 +25,16 @@ func main() {
 	port := flag.Int("port", 18900, "本地服务端口")
 	flag.Parse()
 
-	home, _ := os.UserHomeDir()
+	home, err := os.UserHomeDir()
+	if err != nil || home == "" {
+		home = os.Getenv("USERPROFILE")
+		if home == "" {
+			home = os.Getenv("APPDATA")
+			if home == "" {
+				home = "."
+			}
+		}
+	}
 	dataDir := filepath.Join(home, ".config", "BDSplayer")
 	_ = os.MkdirAll(dataDir, 0755)
 

@@ -101,7 +101,10 @@ class _LoginDialogState extends State<LoginDialog> with SingleTickerProviderStat
     try {
       final url = await _api.getAuthUrl();
       if (Platform.isWindows) {
-        await Process.run('cmd', ['/c', 'start', '', url]);
+        final res = await Process.run('rundll32', ['url.dll,FileProtocolHandler', url]);
+        if (res.exitCode != 0) {
+          await Process.run('explorer.exe', [url]);
+        }
       }
     } catch (e) {
       final fallbackUrl = await _api.getAuthUrl();
@@ -113,6 +116,19 @@ class _LoginDialogState extends State<LoginDialog> with SingleTickerProviderStat
       }
     } finally {
       if (mounted) setState(() => _openingBrowser = false);
+    }
+  }
+
+  void _copyAuthUrl() async {
+    final url = await _api.getAuthUrl();
+    Clipboard.setData(ClipboardData(text: url));
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('已复制授权网址到剪贴板，请在浏览器粘贴访问'),
+          duration: Duration(seconds: 3),
+        ),
+      );
     }
   }
 
@@ -476,21 +492,39 @@ class _LoginDialogState extends State<LoginDialog> with SingleTickerProviderStat
         const SizedBox(height: 16),
 
         // Step 1: Open browser button
-        ElevatedButton.icon(
-          onPressed: _openingBrowser ? null : _openBrowserAuth,
-          icon: _openingBrowser
-              ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
-              : const Icon(Icons.open_in_browser_rounded, size: 18),
-          label: Text(_openingBrowser ? '正在启动浏览器...' : '第一步：在默认浏览器打开授权页面'),
-          style: ElevatedButton.styleFrom(
-            backgroundColor: const Color(0xFF263348),
-            foregroundColor: Colors.white,
-            padding: const EdgeInsets.symmetric(vertical: 12),
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(10),
-              side: const BorderSide(color: Color(0xFF384B66)),
+        Row(
+          children: [
+            Expanded(
+              child: ElevatedButton.icon(
+                onPressed: _openingBrowser ? null : _openBrowserAuth,
+                icon: _openingBrowser
+                    ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+                    : const Icon(Icons.open_in_browser_rounded, size: 18),
+                label: Text(_openingBrowser ? '启动中...' : '在默认浏览器打开授权页'),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: const Color(0xFF263348),
+                  foregroundColor: Colors.white,
+                  padding: const EdgeInsets.symmetric(vertical: 12),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(10),
+                    side: const BorderSide(color: Color(0xFF384B66)),
+                  ),
+                ),
+              ),
             ),
-          ),
+            const SizedBox(width: 8),
+            OutlinedButton.icon(
+              onPressed: _copyAuthUrl,
+              icon: const Icon(Icons.copy_rounded, size: 16),
+              label: const Text('复制网址', style: TextStyle(fontSize: 12)),
+              style: OutlinedButton.styleFrom(
+                foregroundColor: Colors.white70,
+                side: const BorderSide(color: Color(0xFF384B66)),
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+              ),
+            ),
+          ],
         ),
         const SizedBox(height: 16),
 
