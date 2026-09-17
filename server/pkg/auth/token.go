@@ -38,7 +38,7 @@ type TokenManager struct {
 func NewTokenManager(clientID string, configPath string) *TokenManager {
 	if configPath == "" {
 		home, _ := os.UserHomeDir()
-		configPath = filepath.Join(home, ".config", "share-player", "auth.json")
+		configPath = filepath.Join(home, ".config", "BDSplayer", "auth.json")
 	}
 	tm := &TokenManager{
 		clientID:   clientID,
@@ -46,6 +46,16 @@ func NewTokenManager(clientID string, configPath string) *TokenManager {
 	}
 	_ = tm.Load()
 	return tm
+}
+
+func (tm *TokenManager) Clear() error {
+	tm.mu.Lock()
+	defer tm.mu.Unlock()
+	tm.token = nil
+	if tm.configPath != "" {
+		_ = os.Remove(tm.configPath)
+	}
+	return nil
 }
 
 func (tm *TokenManager) GetAccessToken() (string, error) {

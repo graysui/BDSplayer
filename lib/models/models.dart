@@ -110,6 +110,26 @@ class PlayResult {
       currentTime: (json['current_time'] as num?)?.toDouble() ?? 0.0,
     );
   }
+
+  PlayResult copyWith({
+    String? sessionId,
+    String? streamUrl,
+    String? rawDlink,
+    String? videoId,
+    String? videoName,
+    double? duration,
+    double? currentTime,
+  }) {
+    return PlayResult(
+      sessionId: sessionId ?? this.sessionId,
+      streamUrl: streamUrl ?? this.streamUrl,
+      rawDlink: rawDlink ?? this.rawDlink,
+      videoId: videoId ?? this.videoId,
+      videoName: videoName ?? this.videoName,
+      duration: duration ?? this.duration,
+      currentTime: currentTime ?? this.currentTime,
+    );
+  }
 }
 
 class PlaybackProgress {

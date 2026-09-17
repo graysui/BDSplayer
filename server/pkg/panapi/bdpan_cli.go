@@ -69,6 +69,7 @@ var (
 type BDPANCli struct {
 	mu           sync.Mutex
 	exePath      string
+	configPath   string
 	loginCmd     *exec.Cmd
 	loginCancel  context.CancelFunc
 	lastQR       string
@@ -88,6 +89,12 @@ func GetBDPANCli() *BDPANCli {
 		}
 	})
 	return defaultCLI
+}
+
+func (b *BDPANCli) SetConfigPath(path string) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	b.configPath = path
 }
 
 func findBDPANExe() string {
@@ -131,7 +138,13 @@ func (b *BDPANCli) GetExePath() string {
 
 // newCommand creates a command configured with hidden window flags on Windows
 func (b *BDPANCli) newCommand(ctx context.Context, args ...string) *exec.Cmd {
-	cmd := exec.CommandContext(ctx, b.exePath, args...)
+	var finalArgs []string
+	if b.configPath != "" {
+		finalArgs = append(finalArgs, "--config-path", b.configPath)
+	}
+	finalArgs = append(finalArgs, args...)
+
+	cmd := exec.CommandContext(ctx, b.exePath, finalArgs...)
 	cmd.SysProcAttr = &syscall.SysProcAttr{
 		HideWindow:    true,
 		CreationFlags: 0x08000000, // CREATE_NO_WINDOW
@@ -303,19 +316,25 @@ func (b *BDPANCli) CancelLogin() {
 	b.isLoggingIn = false
 }
 
-// DecryptTokens reads and decrypts tokens from ~/.config/bdpan/
+// DecryptTokens reads and decrypts tokens from bdpan config
 func (b *BDPANCli) DecryptTokens() (accessToken, refreshToken string, err error) {
-	home, err := os.UserHomeDir()
-	if err != nil {
-		return "", "", err
+	var cfgPath, keyPath string
+	if b.configPath != "" {
+		cfgPath = b.configPath
+		keyPath = filepath.Join(filepath.Dir(b.configPath), ".token_key")
+	} else {
+		home, err := os.UserHomeDir()
+		if err != nil {
+			return "", "", err
+		}
+		configDir := filepath.Join(home, ".config", "BDSplayer")
+		cfgPath = filepath.Join(configDir, "bdpan.json")
+		keyPath = filepath.Join(configDir, ".token_key")
 	}
-	configDir := filepath.Join(home, ".config", "bdpan")
-	cfgPath := filepath.Join(configDir, "config.json")
-	keyPath := filepath.Join(configDir, ".token_key")
 
 	cfgData, err := os.ReadFile(cfgPath)
 	if err != nil {
-		return "", "", fmt.Errorf("config.json not found: %w", err)
+		return "", "", fmt.Errorf("bdpan config not found: %w", err)
 	}
 	keyData, err := os.ReadFile(keyPath)
 	if err != nil {
@@ -523,4 +542,16 @@ func (b *BDPANCli) FindTransferredFile(targetDir, filename string) (uint64, erro
 		return items[len(items)-1].FsID, nil
 	}
 	return 0, fmt.Errorf("file %s not found in %s", filename, targetDir)
+}
+
+func (b *BDPANCli) Logout() error {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	cmd := b.newCommand(ctx, "logout")
+	_ = cmd.Run()
+	if b.configPath != "" {
+		_ = os.Remove(b.configPath)
+		_ = os.Remove(filepath.Join(filepath.Dir(b.configPath), ".token_key"))
+	}
+	return nil
 }

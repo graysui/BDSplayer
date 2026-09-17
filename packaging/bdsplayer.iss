@@ -3,7 +3,7 @@
 #define MyAppEnglishName "BDSplayer"
 #define MyAppTitle "BDSplayer - 百度网盘视频播放器"
 #ifndef MyAppVersion
-  #define MyAppVersion "1.0.0"
+  #define MyAppVersion "1.0.1"
 #endif
 #define MyAppExeName "BDSplayer.exe"
 
@@ -50,3 +50,6 @@ Name: "{autodesktop}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"; WorkingDi
 
 [Run]
 Filename: "{app}\{#MyAppExeName}"; Description: "{cm:LaunchProgram,{#MyAppName}}"; Flags: nowait postinstall skipifsilent
+
+[UninstallDelete]
+Type: filesandordirs; Name: "{%USERPROFILE}\.config\BDSplayer"

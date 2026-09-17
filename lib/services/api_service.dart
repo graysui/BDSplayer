@@ -38,6 +38,15 @@ class ApiService {
     return false;
   }
 
+  Future<bool> logout() async {
+    try {
+      final res = await http.post(Uri.parse('$baseUrl/api/auth/logout'));
+      return res.statusCode == 200;
+    } catch (_) {
+      return false;
+    }
+  }
+
   // 2. Shares
   Future<List<ShareRecord>> listShares() async {
     final res = await http.get(Uri.parse('$baseUrl/api/shares'));

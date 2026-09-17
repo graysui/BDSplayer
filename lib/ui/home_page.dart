@@ -27,6 +27,31 @@ class HomePage extends StatefulWidget {
   State<HomePage> createState() => _HomePageState();
 }
 
+
+int naturalCompare(String a, String b) {
+  final reg = RegExp(r'(\d+|\D+)');
+  final matchesA = reg.allMatches(a.toLowerCase()).map((m) => m.group(0)!).toList();
+  final matchesB = reg.allMatches(b.toLowerCase()).map((m) => m.group(0)!).toList();
+
+  final minLen = matchesA.length < matchesB.length ? matchesA.length : matchesB.length;
+  for (int i = 0; i < minLen; i++) {
+    final partA = matchesA[i];
+    final partB = matchesB[i];
+
+    final numA = BigInt.tryParse(partA);
+    final numB = BigInt.tryParse(partB);
+
+    if (numA != null && numB != null) {
+      final cmp = numA.compareTo(numB);
+      if (cmp != 0) return cmp;
+    } else {
+      final cmp = partA.compareTo(partB);
+      if (cmp != 0) return cmp;
+    }
+  }
+  return matchesA.length.compareTo(matchesB.length);
+}
+
 class _HomePageState extends State<HomePage> {
   final ApiService _api = ApiService();
   final GlobalKey<ScaffoldState> _scaffoldKey = GlobalKey<ScaffoldState>();
@@ -74,7 +99,7 @@ class _HomePageState extends State<HomePage> {
 
   File _getHiddenFoldersFile() {
     final home = Platform.environment['USERPROFILE'] ?? Platform.environment['HOME'] ?? '.';
-    final dir = Directory('$home/.config/share-player');
+    final dir = Directory('$home/.config/BDSplayer');
     if (!dir.existsSync()) {
       dir.createSync(recursive: true);
     }
@@ -247,12 +272,17 @@ class _HomePageState extends State<HomePage> {
     });
 
     try {
-      final playResult = await _api.preparePlay(
+      var playResult = await _api.preparePlay(
         shareKey: _selectedShare!.shareKey,
         pwd: _selectedShare!.pwd,
         videoName: file.name,
         shareFsId: file.fsId,
       );
+
+      final existingProg = _progressMap[file.fsId];
+      if (existingProg != null && existingProg.currentTime > 1.0) {
+        playResult = playResult.copyWith(currentTime: existingProg.currentTime);
+      }
 
       setState(() {
         _activeVideo = file;
@@ -275,12 +305,16 @@ class _HomePageState extends State<HomePage> {
         orElse: () => ShareRecord(shareKey: progress.shareKey, shareUrl: '', pwd: '', title: progress.videoName),
       );
 
-      final playResult = await _api.preparePlay(
+      var playResult = await _api.preparePlay(
         shareKey: progress.shareKey,
         pwd: targetShare.pwd,
         videoName: progress.videoName,
         shareFsId: progress.shareFsId,
       );
+
+      if (progress.currentTime > 1.0) {
+        playResult = playResult.copyWith(currentTime: progress.currentTime);
+      }
 
       final file = FileItem(
         fsId: progress.shareFsId,
@@ -381,6 +415,24 @@ class _HomePageState extends State<HomePage> {
             ],
           ),
           actions: [
+            TextButton(
+              onPressed: () async {
+                Navigator.pop(ctx);
+                final ok = await _api.logout();
+                if (ok) {
+                  setState(() {
+                    _isLoggedIn = false;
+                    _userInfo = '未登录';
+                  });
+                  if (mounted) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(content: Text('已退出百度网盘登录')),
+                    );
+                  }
+                }
+              },
+              child: const Text('退出登录', style: TextStyle(color: Colors.redAccent)),
+            ),
             TextButton(
               onPressed: () => Navigator.pop(ctx),
               child: const Text('我知道了', style: TextStyle(color: Colors.white54)),
@@ -505,6 +557,186 @@ class _HomePageState extends State<HomePage> {
     return h > 0 ? '$h:$m:$s' : '$m:$s';
   }
 
+
+  Widget _buildOtherFileIcon(String filename) {
+    final ext = filename.contains('.') ? filename.split('.').last.toLowerCase() : '';
+    if (ext == 'pdf') {
+      return const Icon(Icons.picture_as_pdf, color: Colors.redAccent, size: 22);
+    } else if (['zip', 'rar', '7z', 'tar', 'gz'].contains(ext)) {
+      return const Icon(Icons.archive, color: Colors.orangeAccent, size: 22);
+    } else if (['doc', 'docx', 'txt', 'md', 'wps'].contains(ext)) {
+      return const Icon(Icons.description, color: Colors.blueAccent, size: 22);
+    } else if (['jpg', 'jpeg', 'png', 'gif', 'webp'].contains(ext)) {
+      return const Icon(Icons.image, color: Colors.tealAccent, size: 22);
+    } else if (['mp3', 'flac', 'wav', 'aac', 'ogg'].contains(ext)) {
+      return const Icon(Icons.audiotrack, color: Colors.purpleAccent, size: 22);
+    }
+    return const Icon(Icons.insert_drive_file, color: Colors.white54, size: 22);
+  }
+
+  Widget _buildFileItemCard(FileItem file) {
+    final isFav = _favoriteFsIds.contains(file.fsId);
+    final isHidden = _hiddenFolderFsIds.contains(file.fsId);
+    final prog = _progressMap[file.fsId];
+
+    return InkWell(
+      borderRadius: BorderRadius.circular(12),
+      onTap: () {
+        if (file.isDir) {
+          _navigateToDir(file.path.isNotEmpty ? file.path : '$_currentDir/${file.name}');
+        } else if (file.isVideo) {
+          _playVideo(file);
+        } else {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('"${file.name}" 为非视频文件 (${_formatSize(file.size)})，播放器仅支持音视频直接点播。'),
+              duration: const Duration(seconds: 2),
+            ),
+          );
+        }
+      },
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+        decoration: BoxDecoration(
+          color: isHidden ? const Color(0xFF141720) : const Color(0xFF171D2A),
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(
+            color: isHidden ? const Color(0xFF1C2230) : const Color(0xFF222A3B),
+          ),
+        ),
+        child: Row(
+          children: [
+            Container(
+              padding: const EdgeInsets.all(10),
+              decoration: BoxDecoration(
+                color: file.isDir
+                    ? (isHidden
+                        ? Colors.grey.withValues(alpha: 0.1)
+                        : Colors.amber.withValues(alpha: 0.15))
+                    : (file.isVideo
+                        ? Colors.blueAccent.withValues(alpha: 0.15)
+                        : Colors.white.withValues(alpha: 0.08)),
+                borderRadius: BorderRadius.circular(10),
+              ),
+              child: file.isDir
+                  ? Icon(
+                      isHidden ? Icons.folder_off : Icons.folder,
+                      color: isHidden ? Colors.white38 : Colors.amberAccent,
+                      size: 22,
+                    )
+                  : (file.isVideo
+                      ? const Icon(Icons.movie_outlined, color: Colors.blueAccent, size: 22)
+                      : _buildOtherFileIcon(file.name)),
+            ),
+            const SizedBox(width: 16),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      Expanded(
+                        child: Text(
+                          file.name,
+                          style: TextStyle(
+                            color: isHidden
+                                ? Colors.white54
+                                : (file.isVideo || file.isDir ? Colors.white : Colors.white70),
+                            fontSize: 14,
+                            fontWeight: FontWeight.w500,
+                          ),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+                      if (isHidden) ...[
+                        const SizedBox(width: 8),
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                          decoration: BoxDecoration(
+                            color: Colors.grey.withValues(alpha: 0.2),
+                            borderRadius: BorderRadius.circular(4),
+                          ),
+                          child: const Text('已隐藏', style: TextStyle(color: Colors.white38, fontSize: 10)),
+                        ),
+                      ],
+                    ],
+                  ),
+                  const SizedBox(height: 4),
+                  Row(
+                    children: [
+                      Text(
+                        file.isDir ? '目录' : _formatSize(file.size),
+                        style: const TextStyle(color: Colors.white38, fontSize: 12),
+                      ),
+                      if (prog != null) ...[
+                        const SizedBox(width: 10),
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                          decoration: BoxDecoration(
+                            color: prog.isFinished
+                                ? Colors.greenAccent.withValues(alpha: 0.15)
+                                : Colors.blueAccent.withValues(alpha: 0.15),
+                            borderRadius: BorderRadius.circular(4),
+                          ),
+                          child: Text(
+                            prog.isFinished
+                                ? '已看完'
+                                : '已播至 ${prog.progressPercent.toInt()}% (${_formatDuration(prog.currentTime)})',
+                            style: TextStyle(
+                              color: prog.isFinished ? Colors.greenAccent : Colors.blueAccent,
+                              fontSize: 11,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ],
+                  ),
+                ],
+              ),
+            ),
+
+            // Selective Hide Button (Only for Folders)
+            if (file.isDir)
+              IconButton(
+                icon: Icon(
+                  isHidden ? Icons.visibility_off : Icons.visibility_outlined,
+                  color: isHidden ? Colors.amberAccent : Colors.white38,
+                  size: 20,
+                ),
+                tooltip: isHidden ? '恢复显示此文件夹' : '隐藏此文件夹',
+                onPressed: () => _toggleFolderHidden(file.fsId),
+              ),
+
+            // Favorite Button
+            IconButton(
+              icon: Icon(
+                isFav ? Icons.star : Icons.star_border,
+                color: isFav ? Colors.amberAccent : Colors.white38,
+                size: 20,
+              ),
+              tooltip: isFav ? '取消收藏' : '加入收藏',
+              onPressed: () => _toggleFavorite(file),
+            ),
+
+            const SizedBox(width: 8),
+
+            // Action Icon
+            Icon(
+              file.isDir
+                  ? Icons.arrow_forward_ios
+                  : (file.isVideo ? Icons.play_circle_filled : Icons.info_outline),
+              color: file.isDir
+                  ? Colors.white38
+                  : (file.isVideo ? Colors.blueAccent : Colors.white24),
+              size: file.isDir ? 14 : 26,
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     // If playing video, render Native MPV Theater!
@@ -539,17 +771,18 @@ class _HomePageState extends State<HomePage> {
       displayFiles = displayFiles.where((f) => f.name.toLowerCase().contains(q)).toList();
     }
 
-    // 2. Sort files based on _currentSort
+    // 2. Sort files based on _currentSort & separate by type
     final folders = displayFiles.where((f) => f.isDir).toList();
-    final nonFolders = displayFiles.where((f) => !f.isDir).toList();
+    final videoFiles = displayFiles.where((f) => !f.isDir && f.isVideo).toList();
+    final otherFiles = displayFiles.where((f) => !f.isDir && !f.isVideo).toList();
 
     void sortList(List<FileItem> list) {
       switch (_currentSort) {
         case FileSortOption.nameAsc:
-          list.sort((a, b) => a.name.toLowerCase().compareTo(b.name.toLowerCase()));
+          list.sort((a, b) => naturalCompare(a.name, b.name));
           break;
         case FileSortOption.nameDesc:
-          list.sort((a, b) => b.name.toLowerCase().compareTo(a.name.toLowerCase()));
+          list.sort((a, b) => naturalCompare(b.name, a.name));
           break;
         case FileSortOption.sizeDesc:
           list.sort((a, b) => b.size.compareTo(a.size));
@@ -563,8 +796,8 @@ class _HomePageState extends State<HomePage> {
     }
 
     sortList(folders);
-    sortList(nonFolders);
-    displayFiles = [...folders, ...nonFolders];
+    sortList(videoFiles);
+    sortList(otherFiles);
 
     return Scaffold(
       key: _scaffoldKey,
@@ -820,39 +1053,45 @@ class _HomePageState extends State<HomePage> {
                   ),
                   child: Row(
                     children: [
-                      // Breadcrumb
-                      if (_currentDir.isNotEmpty) ...[
-                        IconButton(
-                          icon: const Icon(Icons.arrow_back, color: Colors.white70, size: 20),
-                          tooltip: '返回上一级',
-                          onPressed: () {
-                            final idx = _currentDir.lastIndexOf('/');
-                            if (idx <= 0) {
-                              _navigateToDir('');
-                            } else {
-                              _navigateToDir(_currentDir.substring(0, idx));
-                            }
-                          },
+                      // Breadcrumb (Horizontally scrollable to avoid overflowing sort button)
+                      Expanded(
+                        child: SingleChildScrollView(
+                          scrollDirection: Axis.horizontal,
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              if (_currentDir.isNotEmpty) ...[
+                                IconButton(
+                                  icon: const Icon(Icons.arrow_back, color: Colors.white70, size: 20),
+                                  tooltip: '返回上一级',
+                                  onPressed: () {
+                                    final idx = _currentDir.lastIndexOf('/');
+                                    if (idx <= 0) {
+                                      _navigateToDir('');
+                                    } else {
+                                      _navigateToDir(_currentDir.substring(0, idx));
+                                    }
+                                  },
+                                ),
+                                const SizedBox(width: 4),
+                              ],
+                              Text(
+                                _selectedShare?.title ?? '请选择左侧资源',
+                                style: const TextStyle(color: Colors.white, fontSize: 15, fontWeight: FontWeight.bold),
+                              ),
+                              if (_currentDir.isNotEmpty)
+                                Text(' $_currentDir', style: const TextStyle(color: Colors.white38, fontSize: 13)),
+                              const SizedBox(width: 8),
+                              IconButton(
+                                icon: const Icon(Icons.refresh, color: Colors.white54, size: 18),
+                                tooltip: '重新拉取并更新目录缓存',
+                                onPressed: _refreshCurrentDir,
+                              ),
+                            ],
+                          ),
                         ),
-                        const SizedBox(width: 8),
-                      ],
-                      Text(
-                        _selectedShare?.title ?? '请选择左侧资源',
-                        style: const TextStyle(color: Colors.white, fontSize: 15, fontWeight: FontWeight.bold),
                       ),
-                      if (_currentDir.isNotEmpty)
-                        Text(' $_currentDir', style: const TextStyle(color: Colors.white38, fontSize: 13)),
-
-                      const SizedBox(width: 8),
-
-                      // Fast Refresh Button (pulls latest from Baidu and updates cache)
-                      IconButton(
-                        icon: const Icon(Icons.refresh, color: Colors.white54, size: 18),
-                        tooltip: '重新拉取并更新目录缓存',
-                        onPressed: _refreshCurrentDir,
-                      ),
-
-                      const Spacer(),
+                      const SizedBox(width: 16),
 
                       // 1. Sort Popup Menu
                       PopupMenuButton<FileSortOption>(
@@ -964,164 +1203,92 @@ class _HomePageState extends State<HomePage> {
                 Expanded(
                   child: _loadingFiles
                       ? const Center(child: CircularProgressIndicator(color: Colors.blueAccent))
-                      : displayFiles.isEmpty
+                      : (folders.isEmpty && videoFiles.isEmpty && otherFiles.isEmpty)
                           ? const Center(
                               child: Text('当前目录无匹配文件', style: TextStyle(color: Colors.white38)),
                             )
                           : Stack(
                               children: [
-                                ListView.separated(
+                                ListView(
                                   padding: const EdgeInsets.all(20),
-                                  itemCount: displayFiles.length,
-                                  separatorBuilder: (_, __) => const SizedBox(height: 8),
-                                  itemBuilder: (context, idx) {
-                                    final file = displayFiles[idx];
-                                    final isFav = _favoriteFsIds.contains(file.fsId);
-                                    final isHidden = _hiddenFolderFsIds.contains(file.fsId);
-                                    final prog = _progressMap[file.fsId];
-
-                                    return InkWell(
-                                      borderRadius: BorderRadius.circular(12),
-                                      onTap: () {
-                                        if (file.isDir) {
-                                          _navigateToDir(file.path.isNotEmpty ? file.path : '$_currentDir/${file.name}');
-                                        } else if (file.isVideo) {
-                                          _playVideo(file);
-                                        }
-                                      },
-                                      child: Container(
-                                        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-                                        decoration: BoxDecoration(
-                                          color: isHidden ? const Color(0xFF141720) : const Color(0xFF171D2A),
-                                          borderRadius: BorderRadius.circular(12),
-                                          border: Border.all(
-                                            color: isHidden ? const Color(0xFF1C2230) : const Color(0xFF222A3B),
-                                          ),
-                                        ),
+                                  children: [
+                                    // 1. Folders Section
+                                    if (folders.isNotEmpty) ...[
+                                      Padding(
+                                        padding: const EdgeInsets.only(bottom: 10, left: 4),
                                         child: Row(
                                           children: [
-                                            Container(
-                                              padding: const EdgeInsets.all(10),
-                                              decoration: BoxDecoration(
-                                                color: file.isDir
-                                                    ? (isHidden
-                                                        ? Colors.grey.withValues(alpha: 0.1)
-                                                        : Colors.amber.withValues(alpha: 0.15))
-                                                    : Colors.blueAccent.withValues(alpha: 0.15),
-                                                borderRadius: BorderRadius.circular(10),
-                                              ),
-                                              child: Icon(
-                                                file.isDir
-                                                    ? (isHidden ? Icons.folder_off : Icons.folder)
-                                                    : Icons.movie_outlined,
-                                                color: file.isDir
-                                                    ? (isHidden ? Colors.white38 : Colors.amberAccent)
-                                                    : Colors.blueAccent,
-                                                size: 22,
-                                              ),
-                                            ),
-                                            const SizedBox(width: 16),
-                                            Expanded(
-                                              child: Column(
-                                                crossAxisAlignment: CrossAxisAlignment.start,
-                                                children: [
-                                                  Row(
-                                                    children: [
-                                                      Expanded(
-                                                        child: Text(
-                                                          file.name,
-                                                          style: TextStyle(
-                                                            color: isHidden ? Colors.white54 : Colors.white,
-                                                            fontSize: 14,
-                                                            fontWeight: FontWeight.w500,
-                                                          ),
-                                                          maxLines: 1,
-                                                          overflow: TextOverflow.ellipsis,
-                                                        ),
-                                                      ),
-                                                      if (isHidden) ...[
-                                                        const SizedBox(width: 8),
-                                                        Container(
-                                                          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                                                          decoration: BoxDecoration(
-                                                            color: Colors.grey.withValues(alpha: 0.2),
-                                                            borderRadius: BorderRadius.circular(4),
-                                                          ),
-                                                          child: const Text('已隐藏', style: TextStyle(color: Colors.white38, fontSize: 10)),
-                                                        ),
-                                                      ],
-                                                    ],
-                                                  ),
-                                                  const SizedBox(height: 4),
-                                                  Row(
-                                                    children: [
-                                                      Text(
-                                                        file.isDir ? '目录' : _formatSize(file.size),
-                                                        style: const TextStyle(color: Colors.white38, fontSize: 12),
-                                                      ),
-                                                      if (prog != null) ...[
-                                                        const SizedBox(width: 10),
-                                                        Container(
-                                                          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                                                          decoration: BoxDecoration(
-                                                            color: prog.isFinished
-                                                                ? Colors.greenAccent.withValues(alpha: 0.15)
-                                                                : Colors.blueAccent.withValues(alpha: 0.15),
-                                                            borderRadius: BorderRadius.circular(4),
-                                                          ),
-                                                          child: Text(
-                                                            prog.isFinished
-                                                                ? '已看完'
-                                                                : '已播至 ${prog.progressPercent.toInt()}% (${_formatDuration(prog.currentTime)})',
-                                                            style: TextStyle(
-                                                              color: prog.isFinished ? Colors.greenAccent : Colors.blueAccent,
-                                                              fontSize: 11,
-                                                            ),
-                                                          ),
-                                                        ),
-                                                      ],
-                                                    ],
-                                                  ),
-                                                ],
-                                              ),
-                                            ),
-
-                                            // Selective Hide Button (Only for Folders)
-                                            if (file.isDir)
-                                              IconButton(
-                                                icon: Icon(
-                                                  isHidden ? Icons.visibility_off : Icons.visibility_outlined,
-                                                  color: isHidden ? Colors.amberAccent : Colors.white38,
-                                                  size: 20,
-                                                ),
-                                                tooltip: isHidden ? '恢复显示此文件夹' : '隐藏此文件夹',
-                                                onPressed: () => _toggleFolderHidden(file.fsId),
-                                              ),
-
-                                            // Favorite Button
-                                            IconButton(
-                                              icon: Icon(
-                                                isFav ? Icons.star : Icons.star_border,
-                                                color: isFav ? Colors.amberAccent : Colors.white38,
-                                                size: 20,
-                                              ),
-                                              tooltip: isFav ? '取消收藏' : '加入收藏',
-                                              onPressed: () => _toggleFavorite(file),
-                                            ),
-
+                                            const Icon(Icons.folder, color: Colors.amberAccent, size: 18),
                                             const SizedBox(width: 8),
-
-                                            // Action Icon
-                                            Icon(
-                                              file.isDir ? Icons.arrow_forward_ios : Icons.play_circle_filled,
-                                              color: file.isDir ? Colors.white38 : Colors.blueAccent,
-                                              size: file.isDir ? 14 : 26,
+                                            Text(
+                                              '文件夹 (${folders.length})',
+                                              style: const TextStyle(
+                                                color: Colors.white70,
+                                                fontSize: 13,
+                                                fontWeight: FontWeight.bold,
+                                              ),
                                             ),
                                           ],
                                         ),
                                       ),
-                                    );
-                                  },
+                                      for (final f in folders) ...[
+                                        _buildFileItemCard(f),
+                                        const SizedBox(height: 8),
+                                      ],
+                                      const SizedBox(height: 12),
+                                    ],
+
+                                    // 2. Videos Section
+                                    if (videoFiles.isNotEmpty) ...[
+                                      Padding(
+                                        padding: const EdgeInsets.only(bottom: 10, left: 4),
+                                        child: Row(
+                                          children: [
+                                            const Icon(Icons.movie_outlined, color: Colors.blueAccent, size: 18),
+                                            const SizedBox(width: 8),
+                                            Text(
+                                              '视频文件 (${videoFiles.length})',
+                                              style: const TextStyle(
+                                                color: Colors.white70,
+                                                fontSize: 13,
+                                                fontWeight: FontWeight.bold,
+                                              ),
+                                            ),
+                                          ],
+                                        ),
+                                      ),
+                                      for (final v in videoFiles) ...[
+                                        _buildFileItemCard(v),
+                                        const SizedBox(height: 8),
+                                      ],
+                                      const SizedBox(height: 12),
+                                    ],
+
+                                    // 3. Other Non-Video Files Section (PDF, DOC, ZIP, etc.)
+                                    if (otherFiles.isNotEmpty) ...[
+                                      Padding(
+                                        padding: const EdgeInsets.only(bottom: 10, left: 4),
+                                        child: Row(
+                                          children: [
+                                            const Icon(Icons.insert_drive_file_outlined, color: Colors.white38, size: 18),
+                                            const SizedBox(width: 8),
+                                            Text(
+                                              '其他文件 (${otherFiles.length})',
+                                              style: const TextStyle(
+                                                color: Colors.white38,
+                                                fontSize: 13,
+                                                fontWeight: FontWeight.bold,
+                                              ),
+                                            ),
+                                          ],
+                                        ),
+                                      ),
+                                      for (final o in otherFiles) ...[
+                                        _buildFileItemCard(o),
+                                        const SizedBox(height: 8),
+                                      ],
+                                    ],
+                                  ],
                                 ),
 
                                 // Loading overlay when preparing play

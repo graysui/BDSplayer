@@ -26,11 +26,15 @@ func main() {
 	flag.Parse()
 
 	home, _ := os.UserHomeDir()
-	dataDir := filepath.Join(home, ".config", "share-player")
+	dataDir := filepath.Join(home, ".config", "BDSplayer")
 	_ = os.MkdirAll(dataDir, 0755)
 
 	dbPath := filepath.Join(dataDir, "player.db")
 	authPath := filepath.Join(dataDir, "auth.json")
+	bdpanConfigPath := filepath.Join(dataDir, "bdpan.json")
+
+	// Set custom isolated config path for bdpan CLI
+	panapi.GetBDPANCli().SetConfigPath(bdpanConfigPath)
 
 	// Initialize AppService (with Baidu Netdisk AppKey)
 	appSvc, err := service.NewAppService("zF5kkNsCvckX4aIpRdHxpFkcSMxnGZky", dbPath, authPath)
@@ -51,6 +55,15 @@ func main() {
 			"user_info": userStr,
 			"players":   players,
 		})
+	})
+
+	mux.HandleFunc("/api/auth/logout", func(w http.ResponseWriter, r *http.Request) {
+		err := appSvc.Logout()
+		if err != nil {
+			jsonResponse(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+			return
+		}
+		jsonResponse(w, http.StatusOK, map[string]any{"success": true})
 	})
 
 	mux.HandleFunc("/api/exit", func(w http.ResponseWriter, r *http.Request) {

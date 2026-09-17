@@ -105,6 +105,15 @@ func (s *AppService) PollDeviceLogin(deviceCode string) (bool, error) {
 	return false, nil
 }
 
+func (s *AppService) Logout() error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	_ = s.tokenMgr.Clear()
+	_ = panapi.GetBDPANCli().Logout()
+	return nil
+}
+
 // 2. Share APIs
 type ShareItemDTO struct {
 	storage.ShareRecord

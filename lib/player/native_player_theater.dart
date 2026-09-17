@@ -54,14 +54,40 @@ class _NativePlayerTheaterState extends State<NativePlayerTheater> {
     _resetHideTimer();
 
     // Listen for playback stream to accurately seek when player starts playing
-    player.stream.playing.listen((isPlaying) {
-      if (isPlaying && !_hasRestoredPosition) {
-        if (widget.playData.currentTime > 3.0) {
+    final targetSec = widget.playData.currentTime;
+    if (targetSec > 1.0) {
+      final targetDuration = Duration(milliseconds: (targetSec * 1000).toInt());
+      void tryRestore() {
+        if (!_hasRestoredPosition) {
           _hasRestoredPosition = true;
-          player.seek(Duration(milliseconds: (widget.playData.currentTime * 1000).toInt()));
+          player.seek(targetDuration);
+          if (mounted) {
+            final m = (targetSec ~/ 60).toString().padLeft(2, '0');
+            final s = (targetSec.toInt() % 60).toString().padLeft(2, '0');
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text('已为您自动续播至 $m:$s'),
+                duration: const Duration(seconds: 2),
+                behavior: SnackBarBehavior.floating,
+                backgroundColor: Colors.blueAccent.withValues(alpha: 0.9),
+              ),
+            );
+          }
         }
       }
-    });
+
+      player.stream.duration.listen((dur) {
+        if (dur > Duration.zero && !_hasRestoredPosition) {
+          tryRestore();
+        }
+      });
+
+      player.stream.playing.listen((isPlaying) {
+        if (isPlaying && !_hasRestoredPosition) {
+          tryRestore();
+        }
+      });
+    }
 
     // Sync progress every 3 seconds
     _progressSyncTimer = Timer.periodic(const Duration(seconds: 3), (_) {
@@ -74,9 +100,15 @@ class _NativePlayerTheaterState extends State<NativePlayerTheater> {
         ? widget.playData.rawDlink 
         : widget.playData.streamUrl;
 
+    Duration? startPos;
+    if (widget.playData.currentTime > 1.0) {
+      startPos = Duration(milliseconds: (widget.playData.currentTime * 1000).toInt());
+    }
+
     await player.open(
       Media(
         targetUrl,
+        start: startPos,
         httpHeaders: {
           'User-Agent': 'pan.baidu.com',
           'Referer': 'https://pan.baidu.com',
